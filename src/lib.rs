@@ -137,15 +137,17 @@ blueprint! {
             }
 
             //Vote yes
-            pub fn vote_yes(&mut self, mut vote:Bucket) -> Bucket{
-                self.yes_vote_vault.put(vote.take(dec!(1)));
-                return vote;
+            pub fn vote_yes(&mut self, mut vote_xrd:Bucket) -> Bucket{
+                self.yes_vote_vault.put(vote_xrd.take(dec!("1")));
+                return vote_xrd;
+                
             }
 
             //Vote no
-            pub fn vote_no(&mut self, mut vote:Bucket) -> Bucket{
-                self.no_vote_vault.put(vote.take(dec!(1)));
-                return vote;
+            pub fn vote_no(&mut self, mut vote_xrd:Bucket) -> Bucket{
+                self.no_vote_vault.put(vote_xrd.take(dec!("1")));
+                return vote_xrd;
+                
             }
 
             //This method counts the total of yes and no votes
@@ -160,7 +162,12 @@ blueprint! {
 
                 //Determine the amount of yes and no votes
                 let yes_votes:Decimal = self.yes_vote_vault.amount();
+
+                info!("Yes votes{}", yes_votes);
+
                 let no_votes:Decimal = self.no_vote_vault.amount();
+
+                info!("No votes{}", no_votes);
 
                 //If yes votes > no votes increment the proposal NFT data
                 if yes_votes > no_votes {
@@ -178,6 +185,7 @@ blueprint! {
 
                 } else {
                     //Burn proposal
+                    self.admin_badge_vault.authorize(|| nft_bucket.burn());
                 }
             }
 
@@ -212,11 +220,11 @@ blueprint! {
                 
             }
 
-            pub fn collect_xrd(&mut self, proposal_receipt:Proof) -> Option<Bucket> {
+            pub fn collect_xrd(&mut self, proposal_receipt:Bucket) -> Option<(Bucket, Bucket)> {
 
-                let proposal_receipt:ValidatedProof = proposal_receipt
-                    .validate_proof(ProofValidationMode::ValidateContainsAmount(self.proposal_receipt_resource_address, dec!("1")))
-                    .expect("Invalid Badge");
+                // let proposal_receipt:ValidatedProof = proposal_receipt
+                //     .validate_proof(ProofValidationMode::ValidateContainsAmount(self.proposal_receipt_resource_address, dec!("1")))
+                //     .expect("Invalid Badge");
 
                 let mut receipt_nft_data:ProposalReceipt = proposal_receipt.non_fungible().data();
 
@@ -228,33 +236,33 @@ blueprint! {
                     let funds = self.grant_vault.take(amount/10);
                     receipt_nft_data.stage1_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
-                    return Some(funds);
+                    return Some((funds, proposal_receipt));
                 } else if stage == 2 && receipt_nft_data.stage2_funded == false{
                     info!("Here are your stage 2 funds");
                     let funds = self.grant_vault.take((amount/10)*2);
                     receipt_nft_data.stage2_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
-                    return Some(funds);
+                    return Some((funds, proposal_receipt));
                 } else if stage == 3 && receipt_nft_data.stage3_funded == false{
                     info!("Here are your stage 3 funds");
                     let funds = self.grant_vault.take((amount/10)*3);
                     receipt_nft_data.stage3_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
-                    return Some(funds);
+                    return Some((funds, proposal_receipt));
                 } else if stage == 4 && receipt_nft_data.stage4_funded == false{
                     info!("Here are your stage 4 funds");
                     let funds = self.grant_vault.take((amount/10)*4);
                     receipt_nft_data.stage4_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
-                    return Some(funds);
+                    return Some((funds, proposal_receipt));
                 } else {
                     info!("Invalid Receipt"); 
                     return None;
                 };
             }
 
-            //TEST manually incrament proposal NFT
-            pub fn test(&mut self, nft_id:NonFungibleId) {
+            //TEST manually incrament proposal NFT stage
+            pub fn inc_proposal(&mut self, nft_id:NonFungibleId) {
                 //Use the proposal id to find proposal NFT in proposal vault
                 let proposal_nft:Bucket = self.proposal_vault.take_non_fungible(&nft_id);
 
@@ -270,6 +278,24 @@ blueprint! {
 
                 //Return proposal receipt to vault
                 self.proposal_vault.put(proposal_nft);
+            }
+            
+            //Test manually increment proposal receipt NFT stage
+            pub fn inc_receipt(&self, receipt:Bucket) -> Bucket {
+                //Get NFT data from receipt NFT
+                let mut receipt_nft_data:ProposalReceipt = receipt.non_fungible().data();
+
+                info!("Current stage {}", receipt_nft_data.stage);
+
+                receipt_nft_data.stage += 1;
+
+                info!("Current stage {}", receipt_nft_data.stage);
+
+                self.admin_badge_vault.authorize(||
+                    receipt.non_fungible().update_data(receipt_nft_data));
+
+                return receipt;
+
             }
     }
 }
