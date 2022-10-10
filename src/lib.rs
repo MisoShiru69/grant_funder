@@ -89,14 +89,20 @@ blueprint! {
 
         //Create grant proposal, enter name and amount
         pub fn create_proposal(&mut self, 
+            down_payment:Bucket,
             name:String, 
-            amount:Decimal, 
+            grant_amount:Decimal, 
                 ) -> Bucket {
+
+            assert!(down_payment.amount() >= grant_amount / 2, "Down payment must be 50% of grant");
+            
+            //Put down payment in grant vault
+            self.grant_vault.put(down_payment);
             
             //Proposal NFT data
             let proposal_nft_data = Proposal {
                 name:name,
-                amount:amount,
+                amount:grant_amount,
                 stage:0,
             };
 
@@ -111,7 +117,7 @@ blueprint! {
             //Proposal receipt NFT data
             let receipt_nft_data = ProposalReceipt {
 
-                amount:amount,
+                amount:grant_amount,
                 stage:0,
                 proposal_id:proposal_nft_bucket.non_fungible::<Proposal>().id(),
                 stage1_funded:false,
@@ -222,80 +228,44 @@ blueprint! {
 
             pub fn collect_xrd(&mut self, proposal_receipt:Bucket) -> Option<(Bucket, Bucket)> {
 
-                // let proposal_receipt:ValidatedProof = proposal_receipt
-                //     .validate_proof(ProofValidationMode::ValidateContainsAmount(self.proposal_receipt_resource_address, dec!("1")))
-                //     .expect("Invalid Badge");
-
+                //Get data from proposal receipt
                 let mut receipt_nft_data:ProposalReceipt = proposal_receipt.non_fungible().data();
-
                 let amount = receipt_nft_data.amount;
                 let stage = receipt_nft_data.stage;
 
+                //Verify proposal receipt stage and pay grant funds and update proposal nft data
                 if stage == 1 && receipt_nft_data.stage1_funded == false {
                     info!("Here are your stage 1 funds"); 
-                    let funds = self.grant_vault.take(amount/10);
+                    let funds = self.grant_vault.take((amount/10)*2);
                     receipt_nft_data.stage1_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
                     return Some((funds, proposal_receipt));
+                    
                 } else if stage == 2 && receipt_nft_data.stage2_funded == false{
                     info!("Here are your stage 2 funds");
                     let funds = self.grant_vault.take((amount/10)*2);
                     receipt_nft_data.stage2_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
                     return Some((funds, proposal_receipt));
+                    
                 } else if stage == 3 && receipt_nft_data.stage3_funded == false{
                     info!("Here are your stage 3 funds");
                     let funds = self.grant_vault.take((amount/10)*3);
                     receipt_nft_data.stage3_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
                     return Some((funds, proposal_receipt));
+                    
                 } else if stage == 4 && receipt_nft_data.stage4_funded == false{
                     info!("Here are your stage 4 funds");
-                    let funds = self.grant_vault.take((amount/10)*4);
+                    let funds = self.grant_vault.take((amount/10)*3);
                     receipt_nft_data.stage4_funded = true;
                     self.admin_badge_vault.authorize(|| proposal_receipt.non_fungible().update_data(receipt_nft_data));
                     return Some((funds, proposal_receipt));
+
                 } else {
                     info!("Invalid Receipt"); 
                     return None;
                 };
-            }
-
-            //TEST manually incrament proposal NFT stage
-            pub fn inc_proposal(&mut self, nft_id:NonFungibleId) {
-                //Use the proposal id to find proposal NFT in proposal vault
-                let proposal_nft:Bucket = self.proposal_vault.take_non_fungible(&nft_id);
-
-                //Get the NFT data from the proposal NFT
-                let mut proposal_nft_data:Proposal = proposal_nft.non_fungible().data();
-
-                //Incrament NFT 
-                proposal_nft_data.stage += 1;
-
-                //Update NFT data
-                self.admin_badge_vault.authorize(||
-                    proposal_nft.non_fungible().update_data(proposal_nft_data));
-
-                //Return proposal receipt to vault
-                self.proposal_vault.put(proposal_nft);
-            }
-            
-            //Test manually increment proposal receipt NFT stage
-            pub fn inc_receipt(&self, receipt:Bucket) -> Bucket {
-                //Get NFT data from receipt NFT
-                let mut receipt_nft_data:ProposalReceipt = receipt.non_fungible().data();
-
-                info!("Current stage {}", receipt_nft_data.stage);
-
-                receipt_nft_data.stage += 1;
-
-                info!("Current stage {}", receipt_nft_data.stage);
-
-                self.admin_badge_vault.authorize(||
-                    receipt.non_fungible().update_data(receipt_nft_data));
-
-                return receipt;
-
-            }
+            }  
     }
 }
